@@ -41,6 +41,7 @@ loop1(Socket, Pid, Trace) ->
 	{tcp, Socket, Bin} ->
 	    Term = binary_to_term(Bin),
 	    trace_it(Trace,{socketReceived, Term}),
+        io:format("kooyou tcp rev!"),
 	    Pid ! {chan, self(), Term},
 	    loop1(Socket, Pid, Trace);
 	{tcp_closed, Socket} ->  

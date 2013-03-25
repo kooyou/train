@@ -51,7 +51,10 @@ server_loop(TabId) ->
 	receive
 		{chat,Channel,{login,Id,Psw}} ->
 			case login_handler(Id,Psw,TabId,Channel) of
-				ok -> lib_chan_mm:send(Channel,{login,ok});
+                {ok,Uid,Unick} -> 
+                    %登录成功返回消息：命令码10001
+                    Bin = <<>>
+                    lib_chan_mm:send(Channel,);
 				error -> lib_chan_mm:send(Channel,{login,error})
 			end,
 			server_loop(TabId);
@@ -87,7 +90,7 @@ login_handler(Id,Psw,TabId,Channel) ->
 					{Uid,Unick,Ulogin_times+1,Uchat_times,now()}),
 				%更新online表
 				ets:insert(OnlineTabId,{Unick,Channel}),
-				ok;
+                {ok,Uid,Unick};
 			[] -> error;
 			[{_,_}] -> error
 	end.
