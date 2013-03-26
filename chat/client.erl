@@ -23,6 +23,15 @@
 -define(SUCCEED,1).
 -define(LOGING_COMMAND_ID,10001).
 
+-record(user,{
+    id,             %用户ID
+    name,           %用户名称
+    passwd,         %用户登录密码
+    login_times,    %登录次数
+    chat_times,     %聊天次数
+    last_login     %最后一次登录时间
+}).
+
 %登录到服务器
 %过程：连接->登录验证
 login(UserId,Psw) ->
@@ -89,7 +98,7 @@ loop(Socket) ->
     receive
         {tcp,Socket,Bin} ->
             Val= binary_to_term(Bin),
-                io:format("client result = ~p~n",[Val]);
+                io:format("Msg-> ~p~n",[Val]);
         _Other ->
             io:format("client rev error data!")
     end,

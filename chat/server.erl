@@ -43,8 +43,10 @@ start() ->
     {ok,Listen} = gen_tcp:listen(2345,[binary,{packet,4},
             {reuseaddr,true},
             {active,true}]),
+
     ManagerClientPid = spawn(fun() -> manage_client([],DataPid) end),
-    spawn(fun() -> par_connect(Listen,ManagerClientPid,DataPid) end).
+    spawn(fun() -> par_connect(Listen,ManagerClientPid,DataPid) end),
+    io:format("server running~n").
 
 
 
@@ -59,6 +61,13 @@ par_connect(Listen,ManagerClientPid,DataPid) ->
     case auth_login(DataPid) of
         {login,ok,UserId} -> 
             ManagerClientPid ! {connected,Socket,UserId},
+
+            %登录成功，修改用户相应的数据表信息
+            %增加一次登录次数
+            DataPid ! {add_login_times,UserId},
+            %修改最后一次登录时间
+            DataPid ! {update_lastlogin,UserId},
+
             %登录成功，开始接收消息
             loop(Socket,ManagerClientPid,DataPid);
         {login,error} ->
@@ -128,18 +137,20 @@ loop(Socket,ManagerClientPid,DataPid) ->
     receive
         {tcp,Socket,Bin} ->
             Str =  binary_to_term(Bin),
-            %添加发送者信息
+            %首先查找发送者信息，然后在消息中添加发送者信息
             DataPid ! {get_online_name,Socket,self()},
             receive
-                [{_,UserName}] ->
-                    io:format("get_online: ~p~n",[UserName]),
+                [{_,_UserId,UserName}] ->
                     TemStr = string:concat(UserName," : "),
                     SendStr = string:concat(TemStr,Str),
-                    SendBin = list_to_binary(SendStr);
-                _Other -> SendBin = Bin
+                    io:format("~p~n",[SendStr]),
+                    SendBin = term_to_binary(SendStr),
+                    %广播消息(添加了发送者信息)
+                    ManagerClientPid ! {send,SendBin};
+                _Other -> 
+                    %广播消息
+                    ManagerClientPid ! {send,Bin}
             end,
-            %广播消息
-            ManagerClientPid ! {send,SendBin},
             loop(Socket,ManagerClientPid,DataPid);
         {tcp_closed,Socket} ->
             %下线，从客户端列表删除Socket
@@ -147,19 +158,18 @@ loop(Socket,ManagerClientPid,DataPid) ->
             io:format("Client socket closed~n")
     end.
 
-%管理客户端
+%管理客户端:
 manage_client(ClientList,DataPid) ->
     receive
         {connected,Socket,UserId} ->
-            %客户端登录成功，将客户端的Socket加入列表
-            manage_client([Socket|ClientList],DataPid),
             %向在线表写入数据
             DataPid ! {get_user_name,UserId,self()},
-            io:format("adfasd"),
             receive
-                [_,Name,_,_,_] -> DataPid ! {add_online,Socket,Name};
+                [{_,Name,_,_,_}] -> DataPid ! {add_online,Socket,UserId,Name};
                 _Other -> void
-            end;
+            end,
+            %客户端登录成功，将客户端的Socket加入列表
+            manage_client([Socket|ClientList],DataPid);
         {disconnected,Socket} ->
             %客户端下线，将客户端的Socket从列表删除
             NewList = lists:delete(Socket,ClientList),
@@ -168,7 +178,7 @@ manage_client(ClientList,DataPid) ->
             %广播信息
             send_data(ClientList,Bin),
             manage_client(ClientList,DataPid);
-        Other ->
+        _Other ->
             manage_client(ClientList,DataPid)
     end.
 
