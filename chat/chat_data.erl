@@ -71,7 +71,7 @@ loop(TabId) ->
 %更新用户最后一次登录时间
 update_lastlogin(TabId,UserId) ->
     {_UserTab,UserInfo,_Online} = TabId,
-    [{UserId,UserName,Logintimes,ChatTimes,LastLogin}] = 
+    [{UserId,UserName,Logintimes,ChatTimes,_LastLogin}] = 
                     ets:lookup(UserInfo,UserId),
     NewState = {UserId,UserName,Logintimes,ChatTimes,
         timer_handler:now_to_local_string(now())},

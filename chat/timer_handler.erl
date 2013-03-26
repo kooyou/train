@@ -1,3 +1,7 @@
+-module(timer_handler).
+-compile(export_all).
+
+
 timestamp_to_iso({{Year, Month, Day}, {Hour, Minute, Second}}) ->
     lists:flatten(
       io_lib:format("~4..0w~2..0w~2..0wT~2..0w:~2..0w:~2..0w",
