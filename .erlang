@@ -1,0 +1,5 @@
+io:format("consulting .erlang in~p~n",
+    [element(2,file:get_cwd())]).
+
+c:cd("e:/erlang_project/train/trunk/chat").
+io:format("Now in:~p~n",[element(2,file:get_cwd())]).
