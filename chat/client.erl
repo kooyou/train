@@ -72,7 +72,8 @@ wait_for_cmd(UserRecord) ->
     case Cmd of
         "chat" -> send(UserRecord,Data);
         _Other -> analysis_cmd(Cmd)
-    end.
+    end,
+    wait_for_cmd(UserRecord).
 
 analysis_cmd(String) ->
     %第一个空格前的字符串为命令

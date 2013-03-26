@@ -116,25 +116,9 @@ loop(Socket,ManagerClientPid,DataPid) ->
             %获取协议命令码
             {CmdCode,MsgLen} = protocol_pro:get_protocol_cmd(Bin),
             %根据命令码进行处理分流
-            cmdcode_match(CmdCode,MsgLen,Bin),
+            cmdcode_match(CmdCode,MsgLen,Bin,Socket,DataPid,ManagerClientPid),
             
-            Str = "hello",% binary_to_term(Bin),
-            <<MsgLen:16,MsgCmdId:16,Bin1/binary>> = Bin,
-            io:format("~p,~p~n",[MsgLen,MsgCmdId]),
-            %首先查找发送者信息，然后在消息中添加发送者信息
-            DataPid ! {get_online_name,Socket,self()},
-            receive
-                [{_,_UserId,UserName}] ->
-                    TemStr = string:concat(UserName," : "),
-                    SendStr = string:concat(TemStr,Str),
-                    io:format("~p~n",[SendStr]),
-                    SendBin = term_to_binary(SendStr),
-                    %广播消息(添加了发送者信息)
-                    ManagerClientPid ! {send,SendBin};
-                _Other -> 
-                    %广播消息
-                    ManagerClientPid ! {send,Bin}
-            end,
+           
             loop(Socket,ManagerClientPid,DataPid);
         {tcp_closed,Socket} ->
             %下线，从客户端列表删除Socket
@@ -143,39 +127,52 @@ loop(Socket,ManagerClientPid,DataPid) ->
     end.
 
 
-cmdcode_match(Cmdcode,MsgLen,Bin) ->
+%根据协议命令对消息进行分配处理
+cmdcode_match(Cmdcode,MsgLen,Bin,Socket,DataPid,ManagerClientPid) ->
     GetData = protocol_pro:cmdcode_match(Cmdcode,MsgLen,Bin),
     case Cmdcode of
-        ?LOGING_CMD_ID -> login_handler(GetData);
-        ?WHOONLINE_CMD_ID -> who_online(GetData);
-        ?FNDONLINE_CMD_ID -> fnd_online(GetData);
-        ?CHAT_SEND_CMD_ID -> chat_send(GetData);
-        ?CHAT_REV_CMD_ID -> chat_rev(GetData);
-        ?LOGIN_TIMES_CMD_ID -> login_times(GetData);
-        ?CHAT_TIMES_CMD_ID -> chat_times(GetData)
+        ?LOGING_CMD_ID -> login_handler(GetData,Socket,DataPid,ManagerClientPid);
+        ?WHOONLINE_CMD_ID -> who_online(GetData,Socket,DataPid,ManagerClientPid);
+        ?FNDONLINE_CMD_ID -> fnd_online(GetData,Socket,DataPid,ManagerClientPid);
+        ?CHAT_SEND_CMD_ID -> chat_send(GetData,Socket,DataPid,ManagerClientPid);
+        ?CHAT_REV_CMD_ID -> chat_rev(GetData,Socket,DataPid,ManagerClientPid);
+        ?LOGIN_TIMES_CMD_ID -> login_times(GetData,Socket,DataPid,ManagerClientPid);
+        ?CHAT_TIMES_CMD_ID -> chat_times(GetData,Socket,DataPid,ManagerClientPid)
     end.
 
-login_handler(BinData) ->
+login_handler(BinData,Socket,DataPid,ManagerClientPid) ->
     void.
 
-who_online(BinData) ->
+who_online(BinData,Socket,DataPid,ManagerClientPid) ->
     void.
 
-fnd_online(BinData) ->
+fnd_online(BinData,Socket,DataPid,ManagerClientPid) ->
     void.
 
-chat_send(BinData) ->
+chat_send(BinData,Socket,DataPid,ManagerClientPid) ->
     {Message_Len,Command_ID,Send_User_Id,Send_User_Name,
         Receive_User_Id,Send_Data_Type,Send_Data} = BinData,
-    io:format("Send_User_Id:~p,Name:~p~n",[Send_User_Id,Send_User_Name]),
+    %首先查找发送者信息，然后在消息中添加发送者信息
+    DataPid ! {get_online_name,Socket,self()},
+    receive
+        [{_,_UserId,UserName}] ->
+             TemStr = string:concat(UserName," : "),
+             SendStr = string:concat(TemStr,Send_Data),
+             %io:format("~p~n",[SendStr]),
+             SendBin = term_to_binary(SendStr),
+             %广播消息(添加了发送者信息)
+             ManagerClientPid ! {send,SendBin};
+       _Other -> 
+             %广播消息
+             ManagerClientPid ! {send,term_to_binary(Send_Data)}
+    end.
+
+chat_rev(BinData,Socket,DataPid,ManagerClientPid) ->
     void.
 
-chat_rev(BinData) ->
+login_times(BinData,Socket,DataPid,ManagerClientPid) ->
     void.
 
-login_times(BinData) ->
-    void.
-
-chat_times(BinData) ->
+chat_times(BinData,Socket,DataPid,ManagerClientPid) ->
     void.
 
