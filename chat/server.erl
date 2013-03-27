@@ -27,10 +27,6 @@
 -define(TRACE(X),void).
 -endif.
 
--define(LOGIN_COMMAND_ID,10001).
--define(SUCCEED,1).
--define(FALSE,1).
-
 
 -record(user,{
     id,             %用户ID
@@ -87,6 +83,7 @@ manage_client(ClientList,DataPid) ->
         {disconnected,Socket} ->
             %客户端下线，将客户端的Socket从列表删除
             NewList = lists:delete(Socket,ClientList),
+            DataPid ! {del_online,Socket},
             manage_client(NewList,DataPid);
         {send,Bin} ->
             %广播信息

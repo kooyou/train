@@ -7,6 +7,7 @@
 %%%------------------------------------
 -module(client).
 -compile(export_all).
+-include("protocol.hrl").
 
 %%=========================================================================
 %% 接口函数
@@ -20,18 +21,6 @@
 %%=========================================================================
 %%宏
 %%=========================================================================
--define(SUCCEED,1).  %请求成功
--define(LOGING_CMD_ID,10001).         %登录请求命令码
--define(WHOONLINE_CMD_ID,10002).      %查看在线请求命令码
--define(FNDONLINE_CMD_ID,10003).      %查看在线朋友请求命令码  
--define(CHAT_SEND_CMD_ID,10004).      %发送聊天信息请求命令码
--define(CHAT_REV_CMD_ID,10005).       %接收聊天信息请求命令码
--define(LOGIN_TIMES_CMD_ID,10006).    %查看登录次数请求命令码
--define(CHAT_TIMES_CMD_ID,10007).     %查看聊天次数请求命令码
-
-
--define(MSG_HEAD_LEN,16).             %信息头信息长度
--define(CMD_LEN,16).                  %信息头命令码长度
 
 -record(user,{
     id,             %用户ID
@@ -52,7 +41,7 @@ login(UserId,Psw) ->
 
     %连接到服务器
     S = self(),
-    _Pid = spawn(fun() -> connect(S,UserRecord) end),
+    Pid = spawn(fun() -> connect(S,UserRecord) end),
 
     %子进程会返回登录结果消息
      receive
@@ -61,19 +50,35 @@ login(UserId,Psw) ->
             io:format("login success!~n"),
             io:format("please type the command:~n"),
             %进入等待命令模式
-            wait_for_cmd(NewUserRecord);
+            wait_for_cmd(NewUserRecord,Pid);
          _Other ->
              error
      end.
 
-wait_for_cmd(UserRecord) ->
+ %循环等待用户命令
+wait_for_cmd(UserRecord,Pid) ->
     CmdStr = io:get_line("chat>"),
     {Cmd,Data} = analysis_cmd(CmdStr),
+    %io:format("~p,~p~n",[Cmd,Data]),
     case Cmd of
-        "chat" -> send(UserRecord,Data);
-        _Other -> analysis_cmd(Cmd)
-    end,
-    wait_for_cmd(UserRecord).
+        "chat" -> 
+            send(UserRecord,Data),
+            wait_for_cmd(UserRecord,Pid);
+        "online" -> 
+            who_online(UserRecord),
+            wait_for_cmd(UserRecord,Pid);
+        "logintimes" -> 
+            login_times(UserRecord),
+            wait_for_cmd(UserRecord,Pid);
+        "chattimes" -> 
+            chat_times(UserRecord),
+            wait_for_cmd(UserRecord,Pid);
+        "quit" -> 
+            quit(UserRecord,Pid);
+        _Other -> io:format("bad command!~n"),
+            wait_for_cmd(UserRecord,Pid)
+    end.
+    
 
 analysis_cmd(String) ->
     %第一个空格前的字符串为命令
@@ -82,10 +87,9 @@ analysis_cmd(String) ->
     if
         (Index > 0) andalso (Index < StrLen )->
             SubStr = string:sub_string(String,1,Index-1),
-            LastStr = string:sub_string(String,Index+1,StrLen-2),
-            io:format("~p,~p~n",[SubStr,LastStr]),
+            LastStr = string:sub_string(String,Index+1,StrLen-1),
             {SubStr,LastStr};
-        true -> {"error",""}
+        true -> { string:sub_string(String,1,string:len(String)-1),""}
     end.
 
 
@@ -93,11 +97,37 @@ analysis_cmd(String) ->
 senddata(Socket,Bin) ->
     gen_tcp:send(Socket,Bin).
 
+%退出
+quit(UserRecord,RevPid) ->
+    Socket = UserRecord#user.socket,
+    gen_tcp:close(Socket),
+    RevPid ! stop. %退出接收进程
+
+%查看聊天次数
+chat_times(UserRecord) ->
+    Socket = UserRecord#user.socket,
+    UserId = UserRecord#user.id,
+    SendData = {UserId},
+    SendBin = c_protocol_pro:cmdcode_match(
+        ?CHAT_TIMES_CMD_ID,0,SendData,false),
+    senddata(Socket,SendBin).
+
+
+%查看登录次数
+login_times(UserRecord) ->
+    Socket = UserRecord#user.socket,
+    UserId = UserRecord#user.id,
+    SendData = {UserId},
+    SendBin = c_protocol_pro:cmdcode_match(
+        ?LOGIN_TIMES_CMD_ID,0,SendData,false),
+    senddata(Socket,SendBin).
+
 %查看在线人数
-who_online(Socket) ->
-    Message_Len = ?MSG_HEAD_LEN + ?CMD_LEN ,
-    %封装请求协议
-    SendBin = <<Message_Len:16,?WHOONLINE_CMD_ID:16>>,
+who_online(UserRecord) ->
+    Socket = UserRecord#user.socket,
+
+    SendData = {},
+    SendBin = c_protocol_pro:cmdcode_match(?WHOONLINE_CMD_ID,0,SendData,false),
     senddata(Socket,SendBin).
 
 %发送聊天信息
@@ -123,8 +153,6 @@ send(UserRecord,SendData) ->
                                             %信息体
                 (list_to_binary(SendData))/binary>>,
 
-                io:format("~p~n",[SendBin]),
-
     gen_tcp:send(Socket,SendBin).
 
  %连接并登录
@@ -140,7 +168,7 @@ connect(Parent,UserRecord) ->
                             UserRecord#user{name=UserName,socket=Socket},
                     Parent ! {connected,Socket,UserRecordNew},
                     %进入接收消息循环
-                    loop(Socket);
+                    loop(Socket,UserRecord);
                 false ->
                     Parent ! error
             end;
@@ -173,13 +201,73 @@ try_to_login(UserId,Psw,Socket) ->
     end.
 
 %循环接收消息
-loop(Socket) ->
+loop(Socket,UserRecord) ->
     receive
         {tcp,Socket,Bin} ->
-            Val= binary_to_term(Bin),
-                io:format("Msg-> ~p~n",[Val]);
+            {Cmdcode,MsgLen} = c_protocol_pro:get_protocol_cmd(Bin),
+            RevData = c_protocol_pro:cmdcode_match(Cmdcode,MsgLen,Bin,true),
+            msg_handler(Cmdcode,MsgLen,RevData,UserRecord),
+            
+            loop(Socket,UserRecord);
+        stop -> void;
         _Other ->
-            io:format("client rev error data!")
-    end,
-    loop(Socket).
+            io:format("client rev error data!~n"),
+            loop(Socket,UserRecord)
+    end.
 
+
+%根据消息命令码对消息包进行相应处理
+msg_handler(Cmdcode,MsgLen,Bin,UserRecord) ->
+    case Cmdcode of
+       % ?LOGING_CMD_ID -> login_bag_parse(MsgLen,Bin);
+        ?WHOONLINE_CMD_ID -> whoonline_rev(MsgLen,Bin);
+       % ?FNDONLINE_CMD_ID -> fndonline_bag_parse(MsgLen,Bin);
+       % ?CHAT_SEND_CMD_ID -> chat_send_bag_parse(MsgLen,Bin);
+        ?CHAT_REV_CMD_ID -> chat_rev(MsgLen,Bin,UserRecord);
+        ?LOGIN_TIMES_CMD_ID -> logintimes_rev(MsgLen,Bin);
+        ?CHAT_TIMES_CMD_ID -> chat_times_rev(MsgLen,Bin);
+       _Other -> io:format("client error command ID : ~p",[Cmdcode])
+    end.
+
+whoonline_rev(_MsgLen,Bin) ->
+    {_Message_Len,
+     _Command_ID,
+     _Result,
+     OnlineNum} = Bin,
+    io:format("The number of the online is ~p.~n",[OnlineNum]),
+    void.
+
+
+%对接收到的聊天信息进行处理
+chat_rev(_MsgLen,RevData,UserRecord) ->
+    {_Message_Len,
+     _Command_ID,
+     Send_User_Id,
+     Send_User_Name,
+     _Send_Data_Type,
+     Send_Data} = RevData,
+    
+     if
+        Send_User_Id =:= UserRecord#user.id ->
+            io:format("**Msg** I(~p) say:~s~n",[Send_User_Id,Send_Data]);
+        true ->
+            io:format("**Msg** ~s(~p) say:~s~n",[Send_User_Name,
+                         Send_User_Id,Send_Data])
+    end.
+
+
+logintimes_rev(_MsgLen,RevData) ->
+    {_Message_Len,
+    _Command_Id,
+    _Result,
+    Login_Times} = RevData,
+    io:format("Login times is ~p~n",[Login_Times]),
+    void.
+
+chat_times_rev(_MsgLen,RevData) ->
+    {_Message_Len,
+    _Command_Id,
+    _Result,
+    Chat_Times} = RevData,
+    io:format("Chat times is ~p~n",[Chat_Times]),
+    void.

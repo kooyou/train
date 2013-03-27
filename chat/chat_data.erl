@@ -59,14 +59,41 @@ loop(TabId) ->
             del_online(TabId,Socket);
         {add_login_times,UserId} ->
             add_login_times(TabId,UserId);
+        {get_login_times,UserId,Pid} ->
+            Pid ! {login_times,get_login_times(TabId,UserId)};
         {add_chat_times,UserId} ->
             add_chat_times(TabId,UserId);
+        {get_chat_times,UserId,Pid} ->
+            Pid ! {chat_times,get_chat_times(TabId,UserId)};
         {update_lastlogin,UserId} ->
             update_lastlogin(TabId,UserId);
-        _Other ->
-            io:format("error data require")            
+        {get_online_num,Pid} ->
+            Pid ! {online,get_online_num(TabId)};
+        Other ->
+            io:format("chat_data:error data require:~p~n",[Other])            
     end,
     loop(TabId).
+
+%查看登录次数
+get_login_times(TabId,UserId) ->
+    {_UserTab,UserInfo,_Online} = TabId,
+    case ets:lookup(UserInfo,UserId) of
+        [{_,_,LoginTimes,_,_}] -> LoginTimes;
+        _Other -> 0
+    end.
+
+%查看聊天次数
+get_chat_times(TabId,UserId)->
+    {_UserTab,UserInfo,_Online} = TabId,
+    case ets:lookup(UserInfo,UserId) of
+        [{_,_,_,ChatTimes,_}] -> ChatTimes;
+        _Other -> 0
+    end.
+
+%查看在线人数
+get_online_num(TabId) ->
+    {_UserTab,_UserInfo,Online} = TabId,
+    ets:info(Online,size).
 
 %更新用户最后一次登录时间
 update_lastlogin(TabId,UserId) ->

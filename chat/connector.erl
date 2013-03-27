@@ -8,7 +8,7 @@
 
 -module(connector).
 -compile(export_all).
-
+-include("protocol.hrl").
 
 %%=========================================================================
 %% 接口函数
@@ -19,17 +19,6 @@
 %% 回调函数
 %%=========================================================================
 
--define(LOGIN_COMMAND_ID,10001).
--define(SUCCEED,1).
--define(FALSE,1).
-
--define(LOGING_CMD_ID,10001).         %登录请求命令码
--define(WHOONLINE_CMD_ID,10002).      %查看在线请求命令码
--define(FNDONLINE_CMD_ID,10003).      %查看在线朋友请求命令码  
--define(CHAT_SEND_CMD_ID,10004).      %发送聊天信息请求命令码
--define(CHAT_REV_CMD_ID,10005).       %接收聊天信息请求命令码
--define(LOGIN_TIMES_CMD_ID,10006).    %查看登录次数请求命令码
--define(CHAT_TIMES_CMD_ID,10007).     %查看聊天次数请求命令码
 
 
 manage_one_connector(Socket,ManagerClientPid,DataPid) ->
@@ -60,7 +49,7 @@ auth_login(DataPid) ->
             UserId:32,StrLen:16,Psw:StrLen/binary>> = Bin,
             StrPsw = binary_to_list(Psw),
             if
-                Command_ID == ?LOGIN_COMMAND_ID ->
+                Command_ID == ?LOGING_CMD_ID ->
                     case is_auth(UserId,StrPsw,DataPid) of
                         {auth,ok} -> 
                             %向客户端返回通知，完成协议过程
@@ -87,7 +76,7 @@ auth_feedback(UserId,DataPid,Socket) ->
             %对应答协议包封包
             StrLen = string:len(Name),
             Message_Len = 16+16+16+32+16+StrLen,
-            SendBin = << Message_Len:16,?LOGIN_COMMAND_ID:16,?SUCCEED:16,
+            SendBin = << Message_Len:16,?LOGING_CMD_ID:16,?SUCCEED:16,
                 UserId:32,StrLen:16,(list_to_binary(Name))/binary >>,
             gen_tcp:send(Socket,SendBin),
             true;
@@ -115,10 +104,9 @@ loop(Socket,ManagerClientPid,DataPid) ->
 
             %获取协议命令码
             {CmdCode,MsgLen} = protocol_pro:get_protocol_cmd(Bin),
-            %根据命令码进行处理分流
-            cmdcode_match(CmdCode,MsgLen,Bin,Socket,DataPid,ManagerClientPid),
-            
-           
+            %根据命令码进行分配处理
+            dispatcher(CmdCode,MsgLen,Bin,Socket,DataPid,ManagerClientPid),
+
             loop(Socket,ManagerClientPid,DataPid);
         {tcp_closed,Socket} ->
             %下线，从客户端列表删除Socket
@@ -128,8 +116,10 @@ loop(Socket,ManagerClientPid,DataPid) ->
 
 
 %根据协议命令对消息进行分配处理
-cmdcode_match(Cmdcode,MsgLen,Bin,Socket,DataPid,ManagerClientPid) ->
+dispatcher(Cmdcode,MsgLen,Bin,Socket,DataPid,ManagerClientPid) ->
+    %首先完成对数据包的协议分解
     GetData = protocol_pro:cmdcode_match(Cmdcode,MsgLen,Bin),
+
     case Cmdcode of
         ?LOGING_CMD_ID -> login_handler(GetData,Socket,DataPid,ManagerClientPid);
         ?WHOONLINE_CMD_ID -> who_online(GetData,Socket,DataPid,ManagerClientPid);
@@ -140,39 +130,84 @@ cmdcode_match(Cmdcode,MsgLen,Bin,Socket,DataPid,ManagerClientPid) ->
         ?CHAT_TIMES_CMD_ID -> chat_times(GetData,Socket,DataPid,ManagerClientPid)
     end.
 
+%应答登录处理
 login_handler(BinData,Socket,DataPid,ManagerClientPid) ->
     void.
 
+%应答查看在线人数请求
 who_online(BinData,Socket,DataPid,ManagerClientPid) ->
-    void.
+    
+    {_Message_Len,Command_Id} = BinData,
+    DataPid ! {get_online_num,self()},
+    receive
+        {online,N} -> 
+            ResponseData = {0,N},
+            ResponseBin = 
+                    protocol_pro:cmdcode_pack(Command_Id,ResponseData),
+            sendto(Socket,ResponseBin);
+        _Other -> void
+    end.
 
+%应答查看在线朋友请求
 fnd_online(BinData,Socket,DataPid,ManagerClientPid) ->
     void.
 
+%应答聊天请求
 chat_send(BinData,Socket,DataPid,ManagerClientPid) ->
+
     {Message_Len,Command_ID,Send_User_Id,Send_User_Name,
         Receive_User_Id,Send_Data_Type,Send_Data} = BinData,
+
     %首先查找发送者信息，然后在消息中添加发送者信息
     DataPid ! {get_online_name,Socket,self()},
     receive
-        [{_,_UserId,UserName}] ->
-             TemStr = string:concat(UserName," : "),
-             SendStr = string:concat(TemStr,Send_Data),
-             %io:format("~p~n",[SendStr]),
-             SendBin = term_to_binary(SendStr),
+        [{_,UserId,UserName}] ->
+
+             %对应答内容进行封包处理
+             Data = {UserId,UserName,?SUCCEED,Send_Data},
+             SendBin = protocol_pro:cmdcode_pack(?CHAT_REV_CMD_ID,Data),
+             
              %广播消息(添加了发送者信息)
-             ManagerClientPid ! {send,SendBin};
+             ManagerClientPid ! {send,SendBin},
+
+             %向数据库添加聊天次数
+             DataPid ! {add_chat_times,UserId};
        _Other -> 
              %广播消息
-             ManagerClientPid ! {send,term_to_binary(Send_Data)}
+             %ManagerClientPid ! {send,term_to_binary(Send_Data)}
+             void
     end.
+
+
 
 chat_rev(BinData,Socket,DataPid,ManagerClientPid) ->
     void.
 
-login_times(BinData,Socket,DataPid,ManagerClientPid) ->
-    void.
+login_times(RevData,Socket,DataPid,ManagerClientPid) ->
+    {   _Message_Len,
+        Command_Id,
+        User_Id } = RevData,
+    DataPid ! {get_login_times,User_Id,self()},
+    receive
+        {login_times,LoginTimes} -> 
+            Data = {0,LoginTimes},
+            SendBin = protocol_pro:cmdcode_pack(?LOGIN_TIMES_CMD_ID,Data),
+            sendto(Socket,SendBin);
+        _Other -> io:format("connector login_times error!~n")
+    end.
 
-chat_times(BinData,Socket,DataPid,ManagerClientPid) ->
-    void.
+chat_times(RevData,Socket,DataPid,ManagerClientPid) ->
+     {  _Message_Len,
+        Command_Id,
+        User_Id } = RevData,
+    DataPid ! {get_chat_times,User_Id,self()},
+    receive
+        {chat_times,ChatTimes} -> 
+            Data = {0,ChatTimes},
+            SendBin = protocol_pro:cmdcode_pack(?CHAT_TIMES_CMD_ID,Data),
+            sendto(Socket,SendBin);
+        _Other -> io:format("connector chat_times error!~n")
+    end.
 
+sendto(Socket,Bin) ->
+    gen_tcp:send(Socket,Bin).
