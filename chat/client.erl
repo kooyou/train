@@ -54,6 +54,7 @@ login(UserId,Psw) ->
          _Other ->
              error
      end.
+        
 
  %循环等待用户命令
 wait_for_cmd(UserRecord,Pid) ->
