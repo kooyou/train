@@ -14,6 +14,7 @@
 -define(CHAT_REV_CMD_ID,10005).       %接收聊天信息请求命令码
 -define(LOGIN_TIMES_CMD_ID,10006).    %查看登录次数请求命令码
 -define(CHAT_TIMES_CMD_ID,10007).     %查看聊天次数请求命令码
+-define(REGISTER_CMD_ID,10101).       %用户注册请求命令码
 
 -define(SUCCEED,0).
 -define(FALSE,1).

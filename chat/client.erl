@@ -6,6 +6,7 @@
 %%% @Description: 聊天客户端
 %%%------------------------------------
 -module(client).
+-behaviour(gen_server).
 -compile(export_all).
 -include("protocol.hrl").
 
@@ -17,10 +18,8 @@
 %%=========================================================================
 %% 回调函数
 %%=========================================================================
-
-%%=========================================================================
-%%宏
-%%=========================================================================
+-export([init/1,handle_call/3,handle_cast/2,handle_info/2,
+         terminate/2,code_change/3]).
 
 -record(user,{
     id,             %用户ID
@@ -31,6 +30,56 @@
     last_login,     %最后一次登录时间
     socket          %连接的socket
 }).
+
+start()->
+     gen_server:start_link({local,?MODULE},?MODULE,[],[]).
+
+init([]) ->
+    rev_cmd(),
+    {ok,0}.
+
+%==============================================================
+%回调函数
+handle_call(_Msg,_From,N) ->
+    {reply,N,N}.
+handle_cast(_Msg,N) -> {noreply,N}.
+handle_info(_Info,N) -> {noreply,N}.
+terminate(_Reason,_N) ->
+    io:format("~p stopping~n",[?MODULE]),
+    ok.
+code_change(_OldVsn,N,_Extra) -> {ok,N}.
+%===============================================================
+
+
+%客户端启动时通过命令来确定用户的需求
+%登录或者注册
+rev_cmd() ->
+     CmdStr = io:get_line("chat>"),
+    {Cmd,_Data} = analysis_cmd(CmdStr),
+    %io:format("~p,~p~n",[Cmd,Data]),
+    case Cmd of
+        "login" -> 
+            UserId = io:get_line("UserId:"),
+            UserPasswd = io:get_line("Passwd:"),
+            {ID,_Rest} = string:to_integer(UserId),
+            login(ID,string:sub_string(UserPasswd,1,string:len(UserPasswd)-1));
+        "register" -> 
+            UserName = io:get_line("UserName:"),
+            UserPasswd = io:get_line("Passwd:"),
+            %验证是否合法
+            case is_legal(UserName,UserPasswd) of
+                true -> register_c(UserName,UserPasswd);
+                false -> io:format("User name or password are not legal.~n")
+            end
+    end.
+
+%注册
+register_c(_UserName,_Psw) ->
+    void.
+
+%检验用户名和密码是否合法
+is_legal(_UserName,_Psw) ->
+    true.
 
 %登录到服务器
 %过程：连接->登录验证

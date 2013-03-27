@@ -7,8 +7,8 @@
 %%%------------------------------------
 
 -module(server).
--compile(export_all).
-
+-behaviour(gen_server).
+-export([start/0,start_link/0]).
 %%=========================================================================
 %% 接口函数
 %%=========================================================================
@@ -17,15 +17,13 @@
 %%=========================================================================
 %% 回调函数
 %%=========================================================================
+-export([init/1,handle_call/3,handle_cast/2,handle_info/2,
+         terminate/2,code_change/3]).
 
 %%========================================================================
 %%数据
 %%=========================================================================
--ifdef(debug).
--define(TRACE(X),io:format("TRACE ~p:~p ~p~n",[?MODULE,?LINE,X])).
--else.
--define(TRACE(X),void).
--endif.
+
 
 
 -record(user,{
@@ -36,6 +34,15 @@
     chat_times,     %聊天次数
     last_login     %最后一次登录时间
 }).
+
+start_link() ->
+    gen_server:start_link({local,?MODULE},?MODULE,[],[]).
+
+init([]) ->
+    process_flag(trap_exit,true),
+    io:format("~p starting~n",[?MODULE]),
+    start(),
+    {ok,0}.
 
 start() ->
     %初始化数据
@@ -54,7 +61,17 @@ start() ->
     spawn(fun() -> par_connect(Listen,ManagerClientPid,DataPid) end),
     io:format("server running~n").
 
-
+%==============================================================
+%回调函数
+handle_call(_Msg,_From,N) ->
+    {reply,N,N}.
+handle_cast(_Msg,N) -> {noreply,N}.
+handle_info(_Info,N) -> {noreply,N}.
+terminate(_Reason,_N) ->
+    io:format("~p stopping~",[?MODULE]),
+    ok.
+code_change(_OldVsn,N,_Extra) -> {ok,N}.
+%===============================================================
 
 %并行连接
 par_connect(Listen,ManagerClientPid,DataPid) ->
