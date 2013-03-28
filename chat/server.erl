@@ -26,17 +26,9 @@
 
 
 
--record(user,{
-    id,             %用户ID
-    name,           %用户名称
-    passwd,         %用户登录密码
-    login_times,    %登录次数
-    chat_times,     %聊天次数
-    last_login     %最后一次登录时间
-}).
-
 start_link() ->
-    gen_server:start_link({local,?MODULE},?MODULE,[],[]).
+    {ok,Pid} = gen_server:start_link({local,?MODULE},?MODULE,[],[]).
+    
 
 init([]) ->
     process_flag(trap_exit,true),
@@ -57,18 +49,22 @@ start() ->
             {reuseaddr,true},
             {active,true}]),
 
+    %创建用户群组管理进程
     ManagerClientPid = spawn(fun() -> manage_client([],DataPid) end),
+
+    %创建并行监听进程
     spawn(fun() -> par_connect(Listen,ManagerClientPid,DataPid) end),
     io:format("server running~n").
 
 %==============================================================
+
 %回调函数
-handle_call(_Msg,_From,N) ->
+handle_call({thing},_From,N) ->
     {reply,N,N}.
 handle_cast(_Msg,N) -> {noreply,N}.
 handle_info(_Info,N) -> {noreply,N}.
 terminate(_Reason,_N) ->
-    io:format("~p stopping~",[?MODULE]),
+    io:format("~p stopping~n",[?MODULE]),
     ok.
 code_change(_OldVsn,N,_Extra) -> {ok,N}.
 %===============================================================
@@ -95,6 +91,9 @@ manage_client(ClientList,DataPid) ->
                 [{_,Name,_,_,_}] -> DataPid ! {add_online,Socket,UserId,Name};
                 _Other -> void
             end,
+
+            %%%%%%%%%% 测试警报%%%%%%%
+            alarm_handler:set_alarm(tooMuchClient),
             %客户端登录成功，将客户端的Socket加入列表
             manage_client([Socket|ClientList],DataPid);
         {disconnected,Socket} ->

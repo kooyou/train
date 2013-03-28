@@ -4,7 +4,8 @@
 -export([start/0,init/1]).
 
 start() ->
-       supervisor:start_link({local,?MODULE},?MODULE,_Arg=[]).
+    {ok,Pid} = supervisor:start_link({local,?MODULE},?MODULE,_Arg=[]),
+    unlink(Pid).
 
 init([]) ->
     %%安装服务器警报管理
@@ -13,10 +14,10 @@ init([]) ->
         {server_alarm,xyz}),
 
     {ok,{{one_for_one,3,10},
-            [{tag1,
-             {server,start_link,[]},
-              permanent,
-              10000,
-              worker,
-              [server]}
-    ]}}.
+            [{tagg,
+                    {server,start_link,[]},
+                permanent,
+            100000,
+        worker,
+        [server]}
+]}}.
