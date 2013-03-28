@@ -6,7 +6,6 @@
 %%% @Description: 聊天客户端
 %%%------------------------------------
 -module(client).
--behaviour(gen_server).
 -compile(export_all).
 -include("protocol.hrl").
 
@@ -18,8 +17,6 @@
 %%=========================================================================
 %% 回调函数
 %%=========================================================================
--export([init/1,handle_call/3,handle_cast/2,handle_info/2,
-         terminate/2,code_change/3]).
 
 -record(user,{
     id,             %用户ID
@@ -31,29 +28,11 @@
     socket          %连接的socket
 }).
 
-start()->
-     gen_server:start_link({local,?MODULE},?MODULE,[],[]).
-
-init([]) ->
-    rev_cmd(),
-    {ok,0}.
-
-%==============================================================
-%回调函数
-handle_call(_Msg,_From,N) ->
-    {reply,N,N}.
-handle_cast(_Msg,N) -> {noreply,N}.
-handle_info(_Info,N) -> {noreply,N}.
-terminate(_Reason,_N) ->
-    io:format("~p stopping~n",[?MODULE]),
-    ok.
-code_change(_OldVsn,N,_Extra) -> {ok,N}.
-%===============================================================
 
 
 %客户端启动时通过命令来确定用户的需求
 %登录或者注册
-rev_cmd() ->
+start() ->
      CmdStr = io:get_line("chat>"),
     {Cmd,_Data} = analysis_cmd(CmdStr),
     %io:format("~p,~p~n",[Cmd,Data]),
@@ -74,8 +53,24 @@ rev_cmd() ->
     end.
 
 %注册
-register_c(_UserName,_Psw) ->
-    void.
+register_c(UserName,Psw) ->
+    case connect() of
+        {ok,Socket} -> 
+            SendData = {UserName,Psw},
+            SendBin = c_protocol_pro:cmdcode_match(
+                ?REGISTER_CMD_ID,0,SendData,false),
+            senddata(Socket,SendBin),
+            receive
+                {tcp,Socket,Bin} ->
+                     {Cmdcode,MsgLen} = c_protocol_pro:get_protocol_cmd(Bin),
+                     RevData = c_protocol_pro:cmdcode_match(Cmdcode,MsgLen,Bin,true),
+                     msg_handler(Cmdcode,MsgLen,RevData,0);
+                 _Other ->
+                    io:format("client rev error data!~n")
+            end;
+        error -> io:format("无法连接服务器!~n")
+    end.
+    
 
 %检验用户名和密码是否合法
 is_legal(_UserName,_Psw) ->
@@ -84,13 +79,11 @@ is_legal(_UserName,_Psw) ->
 %登录到服务器
 %过程：连接->登录验证
 login(UserId,Psw) ->
-
     %创建当前用户记录
     UserRecord = #user{id=UserId,passwd=Psw},
-
     %连接到服务器
     S = self(),
-    Pid = spawn(fun() -> connect(S,UserRecord) end),
+    Pid = spawn(fun() -> try_to_login(S,UserRecord) end),
 
     %子进程会返回登录结果消息
      receive
@@ -104,8 +97,57 @@ login(UserId,Psw) ->
              error
      end.
         
+%建立连接
+connect() ->
+    case gen_tcp:connect("localhost",2345,[binary,{packet,4}]) of
+        {ok,Socket} -> {ok,Socket};
+         _Other -> error
+    end.
 
- %循环等待用户命令
+
+%登录到服务器
+try_to_login(Parent,UserRecord) ->
+
+    %建立连接
+    case connect() of
+            error -> Parent ! error;
+            {ok,Socket} -> 
+    %成功建立连接
+    UserId = UserRecord#user.id,
+    Psw = UserRecord#user.passwd,
+    Data = {UserId,Psw},
+
+    %对请求消息进行协议封装
+    SendBin = c_protocol_pro:cmdcode_match(?LOGIN_CMD_ID,0,Data,false),
+    gen_tcp:send(Socket,SendBin),
+    %接收请求应答，并解包分析是否登录成功
+    receive
+        {tcp,Socket,Bin} ->
+            %解析登录应答包
+            {Is_Succeed,UserName} = c_protocol_pro:cmdcode_match(
+                ?LOGIN_CMD_ID,0,Bin,true),
+            if
+                Is_Succeed =:= ?SUCCEED ->
+                    %登录成功，向父进程发送登录成功消息
+                    UserRecordNew = 
+                            UserRecord#user{name=UserName,socket=Socket},
+                    Parent ! {connected,Socket,UserRecordNew},
+                    %连接成功，进入消息循环
+                    loop(Socket,UserRecordNew,true);
+
+                Is_Succeed =:= ?FALSE ->
+                    io:format("False to login!~n"),
+                    Parent ! {error};
+
+                true -> false
+            end;
+        _Other ->
+            false
+    end
+
+end. %end case
+
+%循环等待用户命令
 wait_for_cmd(UserRecord,Pid) ->
     CmdStr = io:get_line("chat>"),
     {Cmd,Data} = analysis_cmd(CmdStr),
@@ -205,70 +247,28 @@ send(UserRecord,SendData) ->
 
     gen_tcp:send(Socket,SendBin).
 
- %连接并登录
-connect(Parent,UserRecord) ->
-    UserId = UserRecord#user.id,
-    Psw = UserRecord#user.passwd,
-    case gen_tcp:connect("localhost",2345,[binary,{packet,4}]) of
-        {ok,Socket} ->
-            case try_to_login(UserId,Psw,Socket) of
-                {true,UserName} -> 
-                    %登录成功，向父进程发送登录成功消息
-                    UserRecordNew = 
-                            UserRecord#user{name=UserName,socket=Socket},
-                    Parent ! {connected,Socket,UserRecordNew},
-                    %进入接收消息循环
-                    loop(Socket,UserRecord);
-                false ->
-                    Parent ! error
-            end;
-        _Other ->
-            Parent ! error
-    end.
 
-
-%登录到服务器
-try_to_login(UserId,Psw,Socket) ->
-    %对请求消息进行协议封装
-    Message_Len = 16 + 16 + 32 + 16 + string:len(Psw) * 8, 
-    StrLen = string:len(Psw),
-    SendBin = <<Message_Len:16,?LOGING_CMD_ID:16,UserId:32,
-    StrLen:16,(list_to_binary(Psw))/binary>>,
-    gen_tcp:send(Socket,SendBin),
-    %接收请求应答，并解包分析是否登录成功
-    receive
-        {tcp,Socket,Bin} ->
-            <<_RevMessage_Len:16,_Command_ID:16,Is_Succeed:16,
-              _User_Id:32,StringLen:16,UserName:StringLen/binary>> = Bin,
-                     
-            if
-                Is_Succeed =:= ?SUCCEED ->
-                    {true,UserName};
-                true -> false
-            end;
-        _Other ->
-            false
-    end.
 
 %循环接收消息
-loop(Socket,UserRecord) ->
+loop(Socket,UserRecord,Is_auth) ->
     receive
         {tcp,Socket,Bin} ->
             {Cmdcode,MsgLen} = c_protocol_pro:get_protocol_cmd(Bin),
             RevData = c_protocol_pro:cmdcode_match(Cmdcode,MsgLen,Bin,true),
             msg_handler(Cmdcode,MsgLen,RevData,UserRecord),
             
-            loop(Socket,UserRecord);
+            loop(Socket,UserRecord,Is_auth);
         stop -> void;
-        _Other ->
-            io:format("client rev error data!~n"),
-            loop(Socket,UserRecord)
+        Other ->
+            io:format("client rev error data:~p!~n",[Other]),
+            loop(Socket,UserRecord,Is_auth)
     end.
 
 
 %根据消息命令码对消息包进行相应处理
 msg_handler(Cmdcode,MsgLen,Bin,UserRecord) ->
     case Cmdcode of
+        ?REGISTER_CMD_ID -> register_rev(MsgLen,Bin);
        % ?LOGING_CMD_ID -> login_bag_parse(MsgLen,Bin);
         ?WHOONLINE_CMD_ID -> whoonline_rev(MsgLen,Bin);
        % ?FNDONLINE_CMD_ID -> fndonline_bag_parse(MsgLen,Bin);
@@ -279,6 +279,15 @@ msg_handler(Cmdcode,MsgLen,Bin,UserRecord) ->
        _Other -> io:format("client error command ID : ~p",[Cmdcode])
     end.
 
+%注册应答解析
+register_rev(MsgLen,RevData) ->
+    {_MsgLen,_CmdId,Result,UserID} = RevData,
+    if Result =:= ?SUCCEED -> io:format("succeed to reigster!~n Your ID is ~p",[UserID]),
+            UserID;
+        true -> io:format("false to register!")
+    end.
+
+%查看在线请求应答解析
 whoonline_rev(_MsgLen,Bin) ->
     {_Message_Len,
      _Command_ID,

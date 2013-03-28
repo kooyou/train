@@ -32,7 +32,8 @@ get_protocol_cmd(Bin) ->
 %根据协议命令码对消息包进行分解处理
 cmdcode_match(Cmdcode,MsgLen,Bin) ->
     case Cmdcode of
-        ?LOGING_CMD_ID -> login_bag_parse(MsgLen,Bin);
+        ?REGISTER_CMD_ID -> register_parse(MsgLen,Bin);
+        ?LOGIN_CMD_ID -> login_bag_parse(MsgLen,Bin);
         ?WHOONLINE_CMD_ID -> whoonline_bag_parse(MsgLen,Bin);
         ?FNDONLINE_CMD_ID -> fndonline_bag_parse(MsgLen,Bin);
         ?CHAT_SEND_CMD_ID -> chat_send_bag_parse(MsgLen,Bin);
@@ -41,15 +42,39 @@ cmdcode_match(Cmdcode,MsgLen,Bin) ->
         ?CHAT_TIMES_CMD_ID -> chat_times_bag_parse(MsgLen,Bin)
     end.
 
+
 %根据协议命令对消息进行封包处理
 cmdcode_pack(Cmdcode,Data) ->
     case Cmdcode of
+        ?REGISTER_CMD_ID -> register_pack(Data);
+        ?LOGIN_CMD_ID -> login_pack(Data);
         ?CHAT_REV_CMD_ID -> chat_rev_pack(Data);
         ?WHOONLINE_CMD_ID -> whoonline_pack(Data);
         ?LOGIN_TIMES_CMD_ID -> logintimes_pack(Data);
         ?CHAT_TIMES_CMD_ID -> chattimes_pack(Data);
         _Other -> void
     end.
+
+%注册解析
+register_parse(_MsgLen,Bin) ->
+    <<Message_Len:16,Command_ID:16,NameLen:16,
+            UserName:NameLen/binary,StrLen:16,Psw:StrLen/binary>> = Bin,
+            {Message_Len,Command_ID,binary_to_list(UserName),binary_to_list(Psw)}.
+
+%注册封包
+register_pack(Data) ->
+    {Result,UserID} = Data,
+     MsgLen = ?MSG_HEAD_LEN + ?CMD_LEN + ?INT16 + ?INT32,
+
+     
+     %ID = string:to_integer(UserID),
+     %[Tem] = UserID,
+     %[ID] = Tem,
+     io:format("~p,~p~n",[MsgLen,UserID]),
+     <<MsgLen:?MSG_HEAD_LEN,
+      ?REGISTER_CMD_ID:?CMD_LEN,
+      Result:?INT16,
+      UserID:?INT32>>.
 
 %封装接收聊天信息应答包 
 chat_rev_pack(Data) ->
@@ -73,7 +98,14 @@ chat_rev_pack(Data) ->
 login_bag_parse(MsgLen,Bin) ->
     <<Message_Len:16,Command_ID:16,
             UserId:32,StrLen:16,Psw:StrLen/binary>> = Bin,
-    {Message_Len,Command_ID,UserId,Psw}.
+            {Message_Len,Command_ID,UserId,binary_to_list(Psw)}.
+%封装登录应答包
+login_pack(Data) ->
+    {Result,UserId,Name} = Data,
+    StrLen = string:len(Name),
+    Message_Len = 16+16+16+32+16+StrLen,
+    SendBin = << Message_Len:16,?LOGIN_CMD_ID:16,Result:16,
+            UserId:32,StrLen:16,(list_to_binary(Name))/binary >>.
 
 %解析查看在线用户请求包
 whoonline_bag_parse(MsgLen,Bin) ->
@@ -142,6 +174,6 @@ chattimes_pack(Data) ->
     {Result,ChatTimes} = Data,
     MsgLen = ?MSG_HEAD_LEN + ?CMD_LEN + ?INT16 + ?INT32,
     <<  MsgLen:?MSG_HEAD_LEN,
-        ?LOGIN_TIMES_CMD_ID:?CMD_LEN,
+        ?CHAT_TIMES_CMD_ID:?CMD_LEN,
         Result:?INT16,
         ChatTimes:?INT32 >>.

@@ -19,22 +19,25 @@
 %%=========================================================================
 
 data_init(Parend) ->
+    %初始化mysql数据
+    db_manager:init_db(),
+
     %user表:user_id,psw
     UserTab = ets:new(user,[set]),
 
-    ets:insert(UserTab,{100,"0"}),
-    ets:insert(UserTab,{101,"1"}),
-    ets:insert(UserTab,{102,"2"}),
-    ets:insert(UserTab,{103,"3"}),
+    %ets:insert(UserTab,{100,"0"}),
+    %ets:insert(UserTab,{101,"1"}),
+    %ets:insert(UserTab,{102,"2"}),
+    %ets:insert(UserTab,{103,"3"}),
 
     %userInfo表:user_id,name,login_times,chat_times,last_login
     UserInfo = ets:new(userInfo,[set]),
-    ets:insert(UserInfo,{100,"joe",0,0,0}),
-    ets:insert(UserInfo,{101,"jane",0,0,0}),
-    ets:insert(UserInfo,{102,"tom",0,0,0}),
-    ets:insert(UserInfo,{103,"zhang",0,0,0}),
+    %ets:insert(UserInfo,{100,"joe",0,0,0}),
+    %ets:insert(UserInfo,{101,"jane",0,0,0}),
+    %ets:insert(UserInfo,{102,"tom",0,0,0}),
+    %ets:insert(UserInfo,{103,"zhang",0,0,0}),
 
-    %online表：name,socket
+    %online表：socket,id,name
     Online = ets:new(online,[set]),
 
     TabId = {UserTab,UserInfo,Online},
@@ -69,10 +72,30 @@ loop(TabId) ->
             update_lastlogin(TabId,UserId);
         {get_online_num,Pid} ->
             Pid ! {online,get_online_num(TabId)};
+        {add_user_info,UserId} ->
+            add_user_info(TabId,UserId);
+        {del_user_info,Socket} ->
+            del_user_info(TabId,Socket);
         Other ->
             io:format("chat_data:error data require:~p~n",[Other])            
     end,
     loop(TabId).
+
+%添加在线用户信息
+add_user_info(TabId,UserId)->
+    Data = get_user_info(UserId),
+    {_UserTab,UserInfo,_Online} = TabId,
+    ets:insert(UserInfo,Data).
+
+%删除在线用户信息
+del_user_info(TabId,Socket) ->
+    {_UserTab,UserInfo,Online} = TabId,
+    [{_,UserId,_}] = ets:lookup(Online,Socket),
+    [Data] = ets:lookup(UserInfo,UserId),
+    db_manager:update_userinfo(Data).
+
+
+    
 
 %查看登录次数
 get_login_times(TabId,UserId) ->
@@ -124,8 +147,14 @@ add_login_times(TabId,UserId) ->
 
 %根据用户ID获取用户登录密码
 get_user_psw(TabId,UserId) ->
-    {UserTab,_UserInfo,_Online} = TabId,
-    ets:lookup(UserTab,UserId).
+    %{UserTab,_UserInfo,_Online} = TabId,
+    %ets:lookup(UserTab,UserId).
+    Pswtem = db_manager:get_user_psw(UserId),
+    [Psw1] = Pswtem,
+    [Psw2] = Psw1,
+    Psw = binary_to_list(Psw2),
+    io:format("chat_data:~p,~p~n",[UserId,Psw]),
+    [{UserId,Psw}].
 
 %根据用户ID获取用户名
 get_user_name(TabId,UserId) ->
@@ -147,3 +176,23 @@ del_online(TabId,Socket) ->
     {_UserTab,_UserInfo,Online} = TabId,
     ets:delete(Online,Socket).
 
+
+%%%%%%%%操作mysql%%%%%%%%%%%%%%%%%%%
+get_user_f_name(UserName) ->
+    db_manager:get_user_f_name(UserName).
+
+add_user(UserId,UserName,Psw) ->
+    db_manager:add_user(UserId,UserName,Psw).
+
+get_user_info(UserId) ->
+    Result = db_manager:get_user_info(UserId),
+    [[Id,Name,LoginTimes,ChatTimes,{time,{Hour,Min,Sec}}]] = Result,
+    
+    io:format("~p,~p~n",[Result,UserId]),
+    {Id,binary_to_list(Name),LoginTimes,ChatTimes,0}.
+
+get_new_id() ->
+    NewId = db_manager:get_new_id(),
+    [Tem] = NewId,
+    [ID] = Tem,
+    ID+1.

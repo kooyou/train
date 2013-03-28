@@ -7,7 +7,7 @@
 -define(INT16,16).
 -define(CHAR8,8).
 
--define(LOGING_CMD_ID,10001).         %登录请求命令码
+-define(LOGIN_CMD_ID,10001).         %登录请求命令码
 -define(WHOONLINE_CMD_ID,10002).      %查看在线请求命令码
 -define(FNDONLINE_CMD_ID,10003).      %查看在线朋友请求命令码  
 -define(CHAT_SEND_CMD_ID,10004).      %发送聊天信息请求命令码

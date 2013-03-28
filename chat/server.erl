@@ -100,6 +100,7 @@ manage_client(ClientList,DataPid) ->
         {disconnected,Socket} ->
             %客户端下线，将客户端的Socket从列表删除
             NewList = lists:delete(Socket,ClientList),
+            DataPid ! {del_user_info,Socket},
             DataPid ! {del_online,Socket},
             manage_client(NewList,DataPid);
         {send,Bin} ->
