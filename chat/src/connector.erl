@@ -124,6 +124,19 @@ login_handler(Data,Socket,DataPid) ->
                 Other -> io:format("has some problem!~p,~p~n",[UserId,Other])
             end,
 
+            %检测警报：tooMuchClient
+            DataPid ! {get_online_num,self()},
+            receive
+                {online,Num} -> 
+                    if
+                        Num > 1000 ->
+                            alarm_handler:set_alarm(tooMuchClient);
+                        true -> void
+                    end;
+                _Other ->
+                    alarm_handler:set_alaram()
+
+
             %登录成功，开始接收消息
             self() ! {login,succeed};
             
