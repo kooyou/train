@@ -8,7 +8,9 @@
 
 -module(server).
 -behaviour(gen_server).
+-compile(export_all).
 -export([start/0,start_link/0]).
+
 %%=========================================================================
 %% 接口函数
 %%=========================================================================
@@ -36,7 +38,6 @@ init([]) ->
     process_flag(trap_exit,true),
     io:format("~p starting~n",[?MODULE]),
     start(),
-    %register(?MODULE,self()),
     {ok,whereis(?MODULE)}.
 
 start() ->
@@ -46,14 +47,17 @@ start() ->
             {active,true}]),
 
     %创建并行监听进程
-    Pid = spawn(fun() -> par_connect(Listen,?MANAGER_CLIENT,?CHAT_DATA) end),
+    Pid = spawn_link(fun() -> par_connect(Listen,?MANAGER_CLIENT,?CHAT_DATA) end),
      gen_tcp:controlling_process(Listen,Pid),
     io:format("server running~n").
 
+
+call_exception() -> gen_server:call(?MODULE,{9}).
 %==============================================================
 
 %回调函数
-handle_call({thing},_From,N) ->
+handle_call({Thing},_From,N) ->
+    Thing/0,
     {reply,N,N}.
 handle_cast(_Msg,N) -> {noreply,N}.
 handle_info(_Info,N) -> {noreply,N}.
@@ -72,7 +76,7 @@ par_connect(Listen,ManagerClientPid,DataPid) ->
 %    spawn(fun() -> par_connect(Listen,ManagerClientPid,DataPid) end),
 
     %管理一个用户的连接
-    Pid = spawn(fun()->connector:manage_one_connector(Socket,ManagerClientPid,DataPid) end),
+    Pid = spawn(fun()->connector:manage_one_connector(Socket,DataPid) end),
     gen_tcp:controlling_process(Socket,Pid),
     par_connect(Listen,ManagerClientPid,DataPid).
 

@@ -30,6 +30,7 @@
 
 
 
+
 %客户端启动时通过命令来确定用户的需求
 %登录或者注册
 start() ->
@@ -151,7 +152,6 @@ end. %end case
 wait_for_cmd(UserRecord,Pid) ->
     CmdStr = io:get_line("chat>"),
     {Cmd,Data} = analysis_cmd(CmdStr),
-    %io:format("~p,~p~n",[Cmd,Data]),
     case Cmd of
         "chat" -> 
             send(UserRecord,Data),
@@ -172,6 +172,7 @@ wait_for_cmd(UserRecord,Pid) ->
     end.
     
 
+%解析输入的命令
 analysis_cmd(String) ->
     %第一个空格前的字符串为命令
     Index = string:chr(String,$ ),
@@ -185,7 +186,7 @@ analysis_cmd(String) ->
     end.
 
 
-%发送信息
+%发送信息(简单封装gen_tcp:send)
 senddata(Socket,Bin) ->
     gen_tcp:send(Socket,Bin).
 
@@ -226,25 +227,10 @@ who_online(UserRecord) ->
 send(UserRecord,SendData) ->
     Socket = UserRecord#user.socket,
 
+    Data = {UserRecord#user.id,binary_to_list(UserRecord#user.name),
+                0,0,SendData},
     %封装协议包
-    UserName = binary_to_list(UserRecord#user.name),
-    NameLen = string:len(UserName),
-    StrLen = string:len(SendData),
-    Message_Len = ?MSG_HEAD_LEN + ?CMD_LEN + 32 + 16 +
-                    NameLen * 8 + 32 + 16 + StrLen * 8,
-
-    SendBin = <<Message_Len:16,             %消息长度
-                ?CHAT_SEND_CMD_ID:16,       %消息命令码
-                (UserRecord#user.id):32,      %发送信息的用户ID
-                NameLen:16,                 %用户名称长度
-                                            %发送信息的用户名称
-                (UserRecord#user.name)/binary,
-                0:32,                       %接收信息的用户ID
-                0:16,                       %消息数据类型string
-                StrLen:16,                  %信息体长度
-                                            %信息体
-                (list_to_binary(SendData))/binary>>,
-
+    SendBin = c_protocol_pro:cmdcode_match(?CHAT_SEND_CMD_ID,0,Data,false),
     gen_tcp:send(Socket,SendBin).
 
 
@@ -269,10 +255,7 @@ loop(Socket,UserRecord,Is_auth) ->
 msg_handler(Cmdcode,MsgLen,Bin,UserRecord) ->
     case Cmdcode of
         ?REGISTER_CMD_ID -> register_rev(MsgLen,Bin);
-       % ?LOGING_CMD_ID -> login_bag_parse(MsgLen,Bin);
         ?WHOONLINE_CMD_ID -> whoonline_rev(MsgLen,Bin);
-       % ?FNDONLINE_CMD_ID -> fndonline_bag_parse(MsgLen,Bin);
-       % ?CHAT_SEND_CMD_ID -> chat_send_bag_parse(MsgLen,Bin);
         ?CHAT_REV_CMD_ID -> chat_rev(MsgLen,Bin,UserRecord);
         ?LOGIN_TIMES_CMD_ID -> logintimes_rev(MsgLen,Bin);
         ?CHAT_TIMES_CMD_ID -> chat_times_rev(MsgLen,Bin);
@@ -314,7 +297,7 @@ chat_rev(_MsgLen,RevData,UserRecord) ->
                          Send_User_Id,Send_Data])
     end.
 
-
+%查看注册信息应答包
 logintimes_rev(_MsgLen,RevData) ->
     {_Message_Len,
     _Command_Id,
@@ -323,6 +306,7 @@ logintimes_rev(_MsgLen,RevData) ->
     io:format("Login times is ~p~n",[Login_Times]),
     void.
 
+%查看聊天次数应答包
 chat_times_rev(_MsgLen,RevData) ->
     {_Message_Len,
     _Command_Id,

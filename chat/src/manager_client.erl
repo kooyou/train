@@ -21,11 +21,11 @@
 
 start() ->
     io:format("manager_client starting...~n"),
-    register(?MODULE,spawn_link(fun() -> manage_client([],chat_data) end)),
+    register(?MODULE,spawn_link(fun() -> manage_client(chat_data) end)),
     {ok,whereis(?MODULE)}.
 
 %管理所有客户端:
-manage_client(ClientList,DataPid) ->
+manage_client(DataPid) ->
     receive
         {connected,Socket,UserId} ->
             %向在线表写入数据
@@ -36,21 +36,26 @@ manage_client(ClientList,DataPid) ->
             end,
 
             %%%%%%%%%% 测试警报%%%%%%%
-            alarm_handler:set_alarm(tooMuchClient),
+            alarm_handler:set_alarm(tooMuchClient);
             %客户端登录成功，将客户端的Socket加入列表
-            manage_client([Socket|ClientList],DataPid);
+            %manage_client([Socket|ClientList],DataPid);
         {disconnected,Socket} ->
             %客户端下线，将客户端的Socket从列表删除
-            NewList = lists:delete(Socket,ClientList),
+            %NewList = lists:delete(Socket,ClientList),
             DataPid ! {del_user_info,Socket},
             DataPid ! {del_online,Socket},
-            manage_client(NewList,DataPid);
+            manage_client(DataPid);
         {send,Bin} ->
-            %广播信息
-            send_data(ClientList,Bin),
-            manage_client(ClientList,DataPid);
+            DataPid ! {all_online_socket,self()},
+            receive
+                {all_online,ClientList} ->
+                    %广播信息
+                    send_data(ClientList,Bin);
+                _Other -> void
+            end,
+            manage_client(DataPid);
         _Other ->
-            manage_client(ClientList,DataPid)
+            manage_client(DataPid)
     end.
 
 

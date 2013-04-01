@@ -75,6 +75,8 @@ loop(TabId) ->
             add_user_info(TabId,UserId);
         {del_user_info,Socket} ->
             del_user_info(TabId,Socket);
+        {all_online_socket,Pid} ->
+            Pid ! {all_online,get_all_online_socket(TabId)};
         Other ->
             io:format("chat_data:error data require:~p~n",[Other])            
     end,
@@ -174,6 +176,26 @@ add_online(TabId,Socket,UserId,UserName) ->
 del_online(TabId,Socket) ->
     {_UserTab,_UserInfo,Online} = TabId,
     ets:delete(Online,Socket).
+
+%遍历online表的socket
+get_all_online_socket(TabId) ->
+    {_UserTab,_UserInfo,Online} = TabId,
+    List = get_all(Online,first,[],[]).
+
+get_all(TabId,Cmd,L,Key1) ->
+    case Cmd of
+        first -> 
+            case ets:first(TabId) of
+                '$end_of_table' -> L;
+                Value -> get_all(TabId,next,[Value|L],Value)
+            end;
+        next ->
+            case ets:next(TabId,Key1) of
+                '$end_of_table' -> L;
+                Value -> get_all(TabId,next,[Value|L],Value)
+            end
+    end.
+
 
 
 %%%%%%%%操作mysql%%%%%%%%%%%%%%%%%%%
