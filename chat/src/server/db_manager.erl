@@ -21,7 +21,9 @@
 -define(CHAT_DB,chat_db).
 init_db() ->
      %打开数据库test
-    mysql:start_link(?CHAT_DB,"localhost","root","1234","test").
+     [Ip,Name,Psw] = init:get_plain_arguments(),
+     io:format("mysql database init:~p,~p,~p~n",[Ip,Name,Psw]),
+    mysql:start_link(?CHAT_DB,Ip,Name,Psw,"test").
 
 get_user_psw(UserID) ->
      SqlStr = io_lib:format("select psw from user_key where id = ~p;",[UserID]),
