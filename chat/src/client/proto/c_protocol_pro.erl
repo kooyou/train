@@ -63,9 +63,10 @@ protocol_parse(?WHOONLINE_CMD_ID,Data) ->
     { Message_Len,Command_ID,Result,OnlineNum};
 
 
-%解析 朋友在线 协议包 -----还没实现
+%解析 朋友在线 协议包
 protocol_parse(?FNDONLINE_CMD_ID,Data) ->
-    <<Num:16, Bin2/binary>> = Data,
+    <<Msg:16,Cmd:16,Bin/binary>> = Data,
+    <<Num:16, Bin2/binary>> = Bin,
     case get_list([], Bin2, Num) of
         {NameList, _Rest} -> NameList;
         error -> {error,no_match}
@@ -202,7 +203,7 @@ protocol_pack(_CMD_ID,_Data) ->
 
 %%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%
-%% 获取列表（读取角色名称列表）
+%% 获取列表（读取用户名称列表）
 %% 列表每项为String，对应<<Length:16, String/binary>>
 %% AccList列表累加器，使用时初始为[]
 get_list(AccList, Bin, N) when N > 0 ->
