@@ -52,6 +52,7 @@ cmdcode_pack(Cmdcode,Data) ->
         ?WHOONLINE_CMD_ID -> whoonline_pack(Data);
         ?LOGIN_TIMES_CMD_ID -> logintimes_pack(Data);
         ?CHAT_TIMES_CMD_ID -> chattimes_pack(Data);
+        ?FNDONLINE_CMD_ID -> friend_online_pack(Data);
         _Other -> void
     end.
 
@@ -65,11 +66,6 @@ register_parse(_MsgLen,Bin) ->
 register_pack(Data) ->
     {Result,UserID} = Data,
      MsgLen = ?MSG_HEAD_LEN + ?CMD_LEN + ?INT16 + ?INT32,
-
-     
-     %ID = string:to_integer(UserID),
-     %[Tem] = UserID,
-     %[ID] = Tem,
      io:format("~p,~p~n",[MsgLen,UserID]),
      <<MsgLen:?MSG_HEAD_LEN,
       ?REGISTER_CMD_ID:?CMD_LEN,
@@ -131,7 +127,8 @@ chat_send_bag_parse(MsgLen,Bin) ->
         Send_User_Id:32,
         NameLen:16,
         Send_User_Name:NameLen/binary,
-        Receive_User_Id:32,
+        RevNameLen:16,
+        Rev_User_Name:RevNameLen/binary,
         Send_Data_Type:16,
         DataLen:16,
         Send_Data:DataLen/binary >> = Bin,
@@ -140,7 +137,7 @@ chat_send_bag_parse(MsgLen,Bin) ->
         Command_ID,
         Send_User_Id,
         binary_to_list(Send_User_Name),
-        Receive_User_Id,
+        binary_to_list(Rev_User_Name),
         Send_Data_Type,
         binary_to_list(Send_Data)   }.
 
@@ -177,3 +174,14 @@ chattimes_pack(Data) ->
         ?CHAT_TIMES_CMD_ID:?CMD_LEN,
         Result:?INT16,
         ChatTimes:?INT32 >>.
+
+friend_online_pack(Data) ->
+    {Result,Array} = Data,
+    N = length(Array),
+    F = fun(Name) ->
+            StrLen = string:len(Name),
+            <<StrLen:?INT16,Name/binary>>
+    end,
+    LB = list_to_binary([F(X) || X <- Array]),
+    <<N:?INT16,LB/binary>>.
+

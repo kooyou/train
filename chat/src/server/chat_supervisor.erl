@@ -25,14 +25,6 @@ init([]) ->
             worker,
             [chat_data]
         },
-        %连接用户群管理进程
-        %{spec_manage_client,
-        %     {manager_client,start,[]},
-        %     permanent,
-        %     brutal_kill,
-        %     worker,
-        %     [manager_client]
-        %},
         %服务端监控进程
        {spec_chat_server,
             {server,start_link,[]},

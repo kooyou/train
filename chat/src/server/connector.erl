@@ -83,6 +83,7 @@ dispatcher(Cmdcode,MsgLen,Bin,Socket,DataPid) ->
         ?CHAT_SEND_CMD_ID -> chat_send(GetData,Socket,DataPid);
         ?CHAT_REV_CMD_ID -> chat_rev(GetData,Socket,DataPid);
         ?LOGIN_TIMES_CMD_ID -> login_times(GetData,Socket,DataPid);
+        ?FNDONLINE_CMD_ID -> online_name(GetData,Socket,DataPid);
         ?CHAT_TIMES_CMD_ID -> chat_times(GetData,Socket,DataPid)
     end.
 
@@ -104,6 +105,20 @@ register_handler(Data,Socket,DataPid) ->
 
 %应答登录处理
 login_handler(Data,Socket,DataPid) ->
+    {_MesLen,Command_ID,UserId,StrPsw} = Data,
+    %检测用户是否已经在线
+    DataPid ! {get_socket,UserId,self()},
+    receive
+        {get_socket,error} -> 
+            io:format("not online!~n");
+        {get_socket,OnlineSocket} -> 
+            %对应答协议包封包
+            PackData = {2,UserId,""},
+            SendBin = protocol_pro:cmdcode_pack(?LOGIN_CMD_ID,PackData),
+            sendto(OnlineSocket,SendBin),
+            ?DEBUG("User has online!");
+        _ -> io:format("not online!~n")
+    end,
     %验证登录的用户名和密码
     case auth_login(DataPid,Data,Socket) of
         {login,ok,UserId} ->
@@ -121,7 +136,7 @@ login_handler(Data,Socket,DataPid) ->
             receive
                 [{_,Name,_,_,_}] -> 
                     DataPid ! {add_online,Socket,UserId,Name};
-                Other -> io:format("has some problem!~p,~p~n",[UserId,Other])
+                Other -> io:format("failed to add online user info!~p,~p~n",[UserId,Other])
             end,
 
             %检测警报：tooMuchClient
@@ -165,10 +180,10 @@ auth_login(DataPid,Data,Socket) ->
                     end;
                 true -> {login,error}
             end.
+        
 
 %应答客户端的登录请求
 auth_feedback(UserId,DataPid,Socket,Is_auth) ->
-    %{_UserTab,UserInfo,_Online} = TabId,
     case Is_auth of
         true ->
             %对应答协议包封包
@@ -185,12 +200,14 @@ auth_feedback(UserId,DataPid,Socket,Is_auth) ->
     end.
 
             
+
 %验证用户名和密码
 is_auth(UserId,Psw,DataPid) ->
     DataPid ! {get_user_psw,UserId,self()},
     receive
         [{_,Psw}] -> 
             {auth,ok};
+        %用户名或者密码错误
         _Other -> {auth,error}
     end.
 
@@ -212,7 +229,7 @@ who_online(BinData,Socket,DataPid) ->
 chat_send(BinData,Socket,DataPid) ->
 
     {_Message_Len,_Command_ID,_Send_User_Id,_Send_User_Name,
-        _Receive_User_Id,_Send_Data_Type,Send_Data} = BinData,
+        Rev_User_Name,_Send_Data_Type,Send_Data} = BinData,
 
     %首先查找发送者信息，然后在消息中添加发送者信息
     DataPid ! {get_online_name,Socket,self()},
@@ -222,19 +239,29 @@ chat_send(BinData,Socket,DataPid) ->
              Data = {UserId,UserName,?SUCCEED,Send_Data},
              SendBin = protocol_pro:cmdcode_pack(?CHAT_REV_CMD_ID,Data),
              
-             %广播消息(添加了发送者信息)
-             %ManagerClientPid ! {send,SendBin},
-             io:format("all_online:befor socket~n"),
-             DataPid ! {all_online_socket,self()},
-             io:format("all_online:socket~n"),
-             receive
-                {all_online,ClientList} ->
-                    io:format("all_online:~p~n",ClientList),
-                    %广播信息
-                    send_data_to_list(ClientList,SendBin);
-                _Other -> io:format("all_online:nonononono~n")
+             case Rev_User_Name of
+                 "" -> %群发
+                    DataPid ! {all_online_socket,self()},
+                    receive
+                        {all_online,ClientList} ->
+                        %广播信息
+                        send_data_to_list(ClientList,SendBin);
+                        _Other -> io:format("error to get online info~n")
+                    end;
+                 _ -> %私聊
+                     io:format("~p!~n",[Rev_User_Name]),
+                     DataPid ! {get_socket_f_name,Rev_User_Name,self()},
+                     receive
+                         {get_socket_f_name,error} -> 
+                             BackStr = "error:user is offline,failed to send msg!",
+                             io:format("~p,~p~n",[BackStr,Send_Data]),
+                             BackData = {UserId,UserName,?SUCCEED,BackStr},
+                             BackBin = protocol_pro:cmdcode_pack(?CHAT_REV_CMD_ID,BackData),
+                             sendto(Socket,BackBin),
+                             io:format("user ~p not online~n",[Rev_User_Name]);
+                         {get_socket_f_name,USocket} -> sendto(USocket,SendBin)
+                     end
              end,
-
              %向数据库添加聊天次数
              DataPid ! {add_chat_times,UserId};
        _Other -> 
@@ -272,6 +299,20 @@ chat_times(RevData,Socket,DataPid) ->
             SendBin = protocol_pro:cmdcode_pack(?CHAT_TIMES_CMD_ID,Data),
             sendto(Socket,SendBin);
         _Other -> io:format("connector chat_times error!~n")
+    end.
+
+%获取所有在线用户名称
+online_name(RevData,Socket,DataPid) ->
+    DataPid ! {get_all_online_name,self()},
+    receive
+        {L} -> 
+            io:format("~p~n",[L]),
+            Data = {?SUCCEED,L},
+            SendBin = protocol_pro:cmdcode_pack(?FNDONLINE_CMD_ID,Data),
+            sendto(Socket,SendBin),
+            io:format("~p~n",[SendBin]);
+
+        Other -> ?DEBUG("no online!")
     end.
 
 sendto(Socket,Bin) ->

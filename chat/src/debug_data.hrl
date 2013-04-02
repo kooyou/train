@@ -1,5 +1,6 @@
--ifdef(debug).
--define(TRACE(X),io:format("TRACE ~p:~p ~p~n",[?MODULE,?LINE,X])).
--else.
--define(TRACE(X),void).
--endif.
+%错误处理
+-define(DEBUG(X),log(X)).
+
+log(X) ->
+    io:format("~p debuf info:~p",[?MODULE,X]),
+    error_logger:error_msg("~p debuf info:~p",[?MODULE,X]).
