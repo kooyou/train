@@ -42,7 +42,7 @@ data_init(Parend) ->
     TabId = {UserTab,UserInfo,Online},
 
     %通知父进程数据初始化完成
-    Parend ! {datainit,ok},
+    %Parend ! {datainit,ok},
 
     loop(TabId).
 

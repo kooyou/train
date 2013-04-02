@@ -180,8 +180,9 @@ friend_online_pack(Data) ->
     N = length(Array),
     F = fun(Name) ->
             StrLen = string:len(Name),
-            <<StrLen:?INT16,Name/binary>>
+            <<StrLen:?INT16,(list_to_binary(Name))/binary>>
     end,
     LB = list_to_binary([F(X) || X <- Array]),
-    <<N:?INT16,LB/binary>>.
+    MsgLen = 0,
+    <<MsgLen:?INT16,?FNDONLINE_CMD_ID:?INT16,N:?INT16,LB/binary>>.
 

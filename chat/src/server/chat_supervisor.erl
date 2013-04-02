@@ -4,9 +4,9 @@
 -export([start/0,init/1]).
 
 start() ->
-    {ok,Pid} = supervisor:start_link({local,?MODULE},?MODULE,[]),
-    unlink(Pid),
-    {ok,Pid}.
+    {ok,Pid} = supervisor:start_link({local,?MODULE},?MODULE,[]).
+    %unlink(Pid),
+    %{ok,Pid}.
 
 init([]) ->
     %%安装服务器警报管理
@@ -18,7 +18,7 @@ init([]) ->
          {one_for_one,3,3600},
         [
         %数据库管理进程
-        {spec_chat_data,
+        {spec_chat_data1,
             {chat_data,start,[]},
             permanent,
             brutal_kill,
@@ -26,7 +26,7 @@ init([]) ->
             [chat_data]
         },
         %服务端监控进程
-       {spec_chat_server,
+       {spec_chat_server1,
             {server,start_link,[]},
             permanent,
             brutal_kill,
