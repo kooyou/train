@@ -1,5 +1,0 @@
-c:cd("f:/erlang_projects/work_train/trunk/chat").
-
-code:add_patha("f:/erlang_projects/work_train/trunk/chat/ebin").
-code:add_patha("f:/erlang_projects/work_train/trunk/chat/src").
-code:add_patha("f:/erlang_projects/work_train/trunk/chat/include").

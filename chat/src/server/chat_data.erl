@@ -26,7 +26,7 @@ start() ->
     register(?MODULE,spawn_link(fun() -> data_init(server) end)),
     {ok, whereis(?MODULE)}.
 
-data_init(Parend) ->
+data_init(_Parend) ->
     %初始化mysql数据
     db_manager:init_db(),
 
@@ -67,7 +67,7 @@ loop(TabId) ->
             add_chat_times(TabId,UserId);
         {get_chat_times,UserId,Pid} ->
             Pid ! {chat_times,get_chat_times(TabId,UserId)};
-        {update_lastlogin,UserId} ->
+        {update_lastlogin,_UserId} ->
             void;
             %update_lastlogin(TabId,UserId);
         {get_online_num,Pid} ->
@@ -98,9 +98,13 @@ add_user_info(TabId,UserId)->
 %删除在线用户信息
 del_user_info(TabId,Socket) ->
     {_UserTab,UserInfo,Online} = TabId,
-    [{_,UserId,_}] = ets:lookup(Online,Socket),
-    [Data] = ets:lookup(UserInfo,UserId),
-    db_manager:update_userinfo(Data).
+   case ets:lookup(Online,Socket) of
+        [{_,UserId,_}] ->
+            [Data] = ets:lookup(UserInfo,UserId),
+            db_manager:update_userinfo(Data);
+        _Other -> error
+    end.
+
 
 
     
@@ -154,14 +158,13 @@ add_login_times(TabId,UserId) ->
 
 
 %根据用户ID获取用户登录密码
-get_user_psw(TabId,UserId) ->
+get_user_psw(_TabId,UserId) ->
     %{UserTab,_UserInfo,_Online} = TabId,
     %ets:lookup(UserTab,UserId).
     case  db_manager:get_user_psw(UserId) of
         [Pswtem] ->
             [Psw1] = Pswtem,
             Psw = binary_to_list(Psw1),
-            io:format("chat_data:~p,~p~n",[UserId,Psw]),
             [{UserId,Psw}];
         _Other -> 
             io:format("bad username or psw~n"),
@@ -192,7 +195,7 @@ del_online(TabId,Socket) ->
 %遍历online表的socket
 get_all_online_socket(TabId) ->
     {_UserTab,_UserInfo,Online} = TabId,
-    List = get_all(Online,first,[],[]).
+    get_all(Online,first,[],[]).
 
 get_all(TabId,Cmd,L,Key1) ->
     case Cmd of
@@ -211,7 +214,7 @@ get_all(TabId,Cmd,L,Key1) ->
 %根据用户ID返回存在online表中的Socket
 get_socket(TabId,UserId) ->
      {_UserTab,_UserInfo,Online} = TabId,
-     Socket = get_socket_online(Online,UserId,first,[]).
+     get_socket_online(Online,UserId,first,[]).
 
 %遍历online表，找出对应ID的socket
 get_socket_online(TabId,UserId,Cmd,Key1) ->
@@ -227,8 +230,7 @@ get_socket_online(TabId,UserId,Cmd,Key1) ->
                                 true -> get_socket_online(TabId,UserId,next,Value)
                             end;
                         [] -> error
-                    end;
-                _Other ->error
+                    end
             end;
         next -> 
             case ets:next(TabId,Key1) of
@@ -240,8 +242,7 @@ get_socket_online(TabId,UserId,Cmd,Key1) ->
                                 true -> get_socket_online(TabId,UserId,next,Value)
                             end;
                         [] -> error
-                    end;
-                _Other -> error
+                    end
             end
     end.
 
@@ -249,7 +250,7 @@ get_socket_online(TabId,UserId,Cmd,Key1) ->
 %根据用户Name返回存在online表中的Socket
 get_socket_f_name(TabId,UserName) ->
      {_UserTab,_UserInfo,Online} = TabId,
-     Socket = get_socket_f_name_online(Online,UserName,first,[]).
+     get_socket_f_name_online(Online,UserName,first,[]).
 
 %遍历online表，找出对应Name的socket
 get_socket_f_name_online(TabId,UserName,Cmd,Key1) ->
@@ -265,8 +266,7 @@ get_socket_f_name_online(TabId,UserName,Cmd,Key1) ->
                               false -> get_socket_f_name_online(TabId,UserName,next,Value)
                             end;
                         [] -> error
-                    end;
-                _Other ->error
+                    end
             end;
         next -> 
             case ets:next(TabId,Key1) of
@@ -279,8 +279,7 @@ get_socket_f_name_online(TabId,UserName,Cmd,Key1) ->
                                 false -> get_socket_f_name_online(TabId,UserName,next,Value)
                             end;
                         [] -> error
-                    end;
-                _Other -> error
+                    end
             end
     end.
 
@@ -300,8 +299,7 @@ get_name_online(TabId,Cmd,Key1,L) ->
                         [{_,_,Name}] -> 
                             get_name_online(TabId,next,Value,[Name|L]);
                         _ -> L
-                    end;
-                _Other -> L
+                    end
             end;
         next -> 
             case ets:next(TabId,Key1) of
@@ -311,8 +309,7 @@ get_name_online(TabId,Cmd,Key1,L) ->
                         [{_,_,Name}] -> 
                             get_name_online(TabId,next,Value,[Name|L]);
                         _ -> L
-                    end;
-                _Other -> L
+                    end
             end
     end.
 
@@ -327,7 +324,7 @@ get_user_info(UserId) ->
     Result = db_manager:get_user_info(UserId),
     [[Id,Name,LoginTimes,ChatTimes,_]] = Result,
     
-    io:format("~p,~p~n",[Result,UserId]),
+    io:format("user info:~p,~p~n",[Result,UserId]),
     {Id,binary_to_list(Name),LoginTimes,ChatTimes,calendar:local_time()}.
 
 get_new_id() ->

@@ -8,7 +8,10 @@
 
 -module(chat_app).
 -behaviour(application).
--export([start/2,stop/1]).
+-export([start/0,start/2,stop/1]).
+
+start() ->
+    application:start(chat).
 
 start(_Type,_StartArgs) ->
     chat_supervisor:start().

@@ -37,6 +37,8 @@
 %登录或者注册
 start() ->
      CmdStr = io:get_line("chat>"),
+     
+
     {Cmd,_Data} = analysis_cmd(CmdStr),
     case Cmd of
         "login" -> 
@@ -45,13 +47,18 @@ start() ->
             {ID,_Rest} = string:to_integer(UserId),
             login(ID,string:sub_string(UserPasswd,1,string:len(UserPasswd)-1));
         "register" -> 
-            UserName = io:get_line("UserName:"),
-            UserPasswd = io:get_line("Passwd:"),
+            TemName = io:get_line("UserName:"),
+            TemPsw = io:get_line("Passwd:"),
+            UserName = string:strip(TemName,both,$\n),
+            UserPasswd = string:strip(TemPsw,both,$\n),
             %验证是否合法
             case is_legal(UserName,UserPasswd) of
                 true -> register_c(UserName,UserPasswd);
                 false -> io:format("User name or password are not legal.~n")
-            end
+            end;
+        Other -> 
+            io:format("bad command:~p~n",[Other]),
+            start()
     end.
 
 %注册
@@ -60,6 +67,7 @@ register_c(UserName,Psw) ->
         {ok,Socket} -> 
             SendData = {UserName,Psw},
             SendBin = c_protocol_pro:cmdcode_match(
+
                 ?REGISTER_CMD_ID,0,SendData,false),
             senddata(Socket,SendBin),
             receive
@@ -190,10 +198,11 @@ analysis_cmd(String) ->
     StrLen = string:len(String),
     if
         (Index > 0) andalso (Index < StrLen )->
-            SubStr = string:sub_string(String,1,Index-1),
-            LastStr1 = string:sub_string(String,Index+1,StrLen),
-            LastStr = string:strip(LastStr1,both,$\n),
-            io:format("cmd:~p,~p~n",[SubStr,LastStr]),
+            SubTemp = string:sub_string(String,1,Index),
+            SubStr = string:strip(SubTemp,both,$ ),
+            LastStr1 = string:sub_string(String,Index,StrLen),
+            LastStr2 = string:strip(LastStr1,both,$ ),
+            LastStr = string:strip(LastStr2,both,$\n),
             {SubStr,LastStr};
         true -> { string:sub_string(String,1,string:len(String)-1),""}
     end.
@@ -239,8 +248,7 @@ who_online(UserRecord) ->
 %发送聊天信息
 send(UserRecord,SendData,Sendto) ->
     case Sendto of
-        sendto -> {Name,Data} = analysis_cmd(SendData),
-            io:format("~p,~p~n",[Name,Data]);
+        sendto -> {Name,Data} = analysis_cmd(SendData);
         _ -> Name = "",Data = SendData
     end,
 
@@ -254,7 +262,7 @@ send(UserRecord,SendData,Sendto) ->
 
 
 
-friend_name(UserRecord,Data) ->
+friend_name(UserRecord,_Data) ->
     Socket = UserRecord#user.socket,
 
     SendData = {},
@@ -292,9 +300,9 @@ msg_handler(Cmdcode,MsgLen,Bin,UserRecord) ->
     end.
 
 %登录处理，如重复登录
-login_rev(MsgLen,RevData) ->
+login_rev(_MsgLen,RevData) ->
    %解析登录应答包
-   {Is_Succeed,UserName} = RevData,
+   {Is_Succeed,_UserName} = RevData,
    if
        Is_Succeed =:= 2 ->
            io:format("This account is logging in in another place!~nAnd you are offline!~n"),
@@ -305,7 +313,7 @@ login_rev(MsgLen,RevData) ->
 
 
 %注册应答解析
-register_rev(MsgLen,RevData) ->
+register_rev(_MsgLen,RevData) ->
     {_MsgLen,_CmdId,Result,UserID} = RevData,
     if Result =:= ?SUCCEED ->
            io:format("succeed to reigster!~n Your ID is ~p~n",[UserID]);
@@ -315,7 +323,7 @@ register_rev(MsgLen,RevData) ->
 %查看在线朋友名称应答解析
 friend_rev(_MsgLen,Bin) ->
     NameList = Bin,
-    [io:format("~p~n",[X]) || X <- NameList],
+    [io:format("friend:~p~n",[X]) || X <- NameList],
     void.
 
 
@@ -340,7 +348,7 @@ chat_rev(_MsgLen,RevData,UserRecord) ->
     
      if
         Send_User_Id =:= UserRecord#user.id ->
-            io:format("**Msg** I(~p) say:~s~n",[Send_User_Id,Send_Data]);
+            io:format("**Msg** I (~p) say:~s~n",[Send_User_Id,Send_Data]);
         true ->
             io:format("**Msg** ~s(~p) say:~s~n",[Send_User_Name,
                          Send_User_Id,Send_Data])

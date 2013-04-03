@@ -67,7 +67,7 @@ loop(Socket,DataPid,Is_auth) ->
             %客户端下线，将客户端的Socket从列表删除
             DataPid ! {del_user_info,Socket},
             DataPid ! {del_online,Socket},
-            io:format("Client socket closed!~n")
+            io:format("Client(socket:~p) closed!~n",[Socket])
     end.
 
 
@@ -88,7 +88,7 @@ dispatcher(Cmdcode,MsgLen,Bin,Socket,DataPid) ->
     end.
 
 %应答注册请求
-register_handler(Data,Socket,DataPid) ->
+register_handler(Data,Socket,_DataPid) ->
     {_MsgLen,_CmdID,Name,Psw} = Data,
     case chat_data:get_user_f_name(Name) of
         [] -> 
@@ -105,19 +105,19 @@ register_handler(Data,Socket,DataPid) ->
 
 %应答登录处理
 login_handler(Data,Socket,DataPid) ->
-    {_MesLen,Command_ID,UserId,StrPsw} = Data,
+    {_MesLen,_Command_ID,UserId,_StrPsw} = Data,
     %检测用户是否已经在线
     DataPid ! {get_socket,UserId,self()},
     receive
         {get_socket,error} -> 
-            io:format("not online!~n");
+            io:format("User ~p try to login!~n",[UserId]);
         {get_socket,OnlineSocket} -> 
             %对应答协议包封包
             PackData = {2,UserId,""},
             SendBin = protocol_pro:cmdcode_pack(?LOGIN_CMD_ID,PackData),
             sendto(OnlineSocket,SendBin),
-            ?DEBUG("User has online!");
-        _ -> io:format("not online!~n")
+            io:format("User(Sokcet:~p) ~p has online,try to login with socket~p now!~n",[OnlineSocket,UserId,Socket]);
+        _ -> io:format("Cann't not find online!~n")
     end,
     %验证登录的用户名和密码
     case auth_login(DataPid,Data,Socket) of
@@ -151,12 +151,13 @@ login_handler(Data,Socket,DataPid) ->
                 _Other ->
                     alarm_handler:set_alaram()
             end,
-
+            io:format("user ~p(socket:~p) succeed to login!~n",[UserId,Socket]),
 
             %登录成功，开始接收消息
             self() ! {login,succeed};
             
         {login,error} ->
+            io:format("User ~p(Socket:~p) failed to login!~n",[Socket,UserId]),
             self() ! {login,false}
     end.
     
@@ -183,7 +184,7 @@ auth_login(DataPid,Data,Socket) ->
         
 
 %应答客户端的登录请求
-auth_feedback(UserId,DataPid,Socket,Is_auth) ->
+auth_feedback(UserId,_DataPid,Socket,Is_auth) ->
     case Is_auth of
         true ->
             %对应答协议包封包
@@ -249,7 +250,6 @@ chat_send(BinData,Socket,DataPid) ->
                         _Other -> io:format("error to get online info~n")
                     end;
                  _ -> %私聊
-                     io:format("~p!~n",[Rev_User_Name]),
                      DataPid ! {get_socket_f_name,Rev_User_Name,self()},
                      receive
                          {get_socket_f_name,error} -> 
@@ -302,17 +302,16 @@ chat_times(RevData,Socket,DataPid) ->
     end.
 
 %获取所有在线用户名称
-online_name(RevData,Socket,DataPid) ->
+online_name(_RevData,Socket,DataPid) ->
     DataPid ! {get_all_online_name,self()},
     receive
         {L} -> 
-            io:format("~p~n",[L]),
+            io:format("Get online name:~p~n",[L]),
             Data = {?SUCCEED,L},
             SendBin = protocol_pro:cmdcode_pack(?FNDONLINE_CMD_ID,Data),
-            sendto(Socket,SendBin),
-            io:format("~p~n",[SendBin]);
+            sendto(Socket,SendBin);
 
-        Other -> ?DEBUG("no online!")
+        _Other -> ?DEBUG("no online!")
     end.
 
 sendto(Socket,Bin) ->

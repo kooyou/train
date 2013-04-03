@@ -10,9 +10,9 @@ start() ->
 
 init([]) ->
     %%安装服务器警报管理
-    %gen_event:swap_handler(alarm_handler,
-    %    {alarm_handler,swap},
-    %    {server_alarm,abc}),
+    gen_event:swap_handler(alarm_handler,
+        {alarm_handler,swap},
+        {server_alarm,abc}),
     {ok,{
          {one_for_one,3,3600},
         [
