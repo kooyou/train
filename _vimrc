@@ -1,3 +1,5 @@
+execute pathogen#infect()
+
 set nocompatible
 source $VIMRUNTIME/vimrc_example.vim
 source $VIMRUNTIME/mswin.vim
@@ -65,7 +67,7 @@ colorscheme koehler
 "NERDTree plugin
 let NERDTreeWinPos = "left" "where NERD tree window is placed on the screen
 let NERDTreeWinSize = 25 "size of the NERD tree
-nmap <F7> <ESC>:NERDTreeToggle<RETURN>	"Open and close the NERD_tree.vim separately
+nmap <F8> <ESC>:NERDTreeToggle<RETURN>	"Open and close the NERD_tree.vim separately
 let NERDTreeMouseMode = 1 "指定鼠标模式（1.双击打开；2.单目录双文件；3.单击打开）
 
 "taglist plugin
@@ -92,6 +94,9 @@ set lbr	"整词折行（lbr即linebreak）
 :inoremap ] <c-r>=ClosePair(']')<CR>
 :inoremap < <><ESC>i
 :inoremap > <c-r>=ClosePair('>')<CR>
+"自己加上去的
+:inoremap " ""<ESC>i
+
 
 function ClosePair(char)
     if getline('.')[col('.') - 1] == a:char
@@ -172,7 +177,7 @@ let mapleader = ","
 let g:mapleader = ","
 
 "文件浏览相关
-cd e:/erlang_project/train/trunk/chat
+cd E:/erlang_project/mail/trunk
 " autocmd BufEnter * lcd %:p:h "自动cd到当前文件所在的目录
 "打开树型目录
 map <f1> :NERDTreeToggle<cr>
@@ -342,8 +347,8 @@ map <m-m> :call ToggleCursorLine()<cr> "梆定到Alt+m键上
 if has("gui_running")
     "set guioptions=
 
-    "set guifont=ProFontWindows:h11:w5.8
-    "set guifont=inconsolata:h10
+    set guifont=ProFontWindows:h11:w5.8
+    set guifont=inconsolata:h10
     set guifont=YaHei\ Consolas\ Hybrid:h12
     "set guifont=courier\ new:h12:w5.8
 
@@ -368,7 +373,49 @@ if has("gui_running")
             exec ':winpos '.(getwinposx()).' '.(getwinposy() + 44)
         endif
     endfunction
-endi
+endif
+
+
+
+"Session相关
+set sessionoptions+=resize
+map <F3> :mksession! ~/worksess.vim<cr> "保存当前编辑器的状态
+map <leader>load :source ~/worksess.vim<cr> "恢复编辑器到上次保存的状态
+
+" flash相关设置
+nmap <F9> :call MakeMxml()<cr> "梆定flex编译器
+nmap <F10> :!d:/software/flashplayer.exe %<.swf<cr> "执行编译后的swf
+function! MakeMxml()
+    setl makeprg=mxmlc\ --static-link-runtime-shared-libraries=true\ --show-actionscript-warnings=true\ --strict=true\ -debug=true\ %
+    setl errorformat=\ %f(%l):\ Error:\ %m
+    :make
+endfunction
+
+" 将app文件当成erlang文件处理
+autocmd BufRead,BufNewFile *.app set filetype=erlang
+" ActionScript,flex,air
+autocmd BufRead,BufNewFile *.as set filetype=actionscript
+"将heXa文件也当成actionscript文件显示
+autocmd BufRead,BufNewFile *.hx set filetype=actionscript
+"将mxml设成XML文件显示
+autocmd BufRead,BufNewFile *.mxml set filetype=mxml
+
+"打开智能补全
+autocmd FileType python set omnifunc=pythoncomplete#Complete
+autocmd FileType javascript set omnifunc=javascriptcomplete#CompleteJS
+autocmd FileType html set omnifunc=htmlcomplete#CompleteTags
+autocmd FileType css set omnifunc=csscomplete#CompleteCSS
+autocmd FileType xml set omnifunc=xmlcomplete#CompleteTags
+autocmd FileType php set omnifunc=phpcomplete#CompletePHP
+autocmd FileType c set omnifunc=ccomplete#Complete
+autocmd FileType erlang set omnifunc=erlang_complete#Complete
+
+" neocomplcache插件相关设置
+let g:neocomplcache_enable_at_startup = 1
+" 在某些情况下禁用neocomplcache
+let g:neocomplcache_lock_buffer_name_pattern = '[fuf]'
+inoremap <expr><tab> pumvisible() ? "\<c-n>" : "\<tab>"
+
 " inoremap <expr><cr> neocomplcache#smart_close_popup() . "\<cr>"
 " inoremap <expr><c-h> neocomplcache#smart_close_popup()."\<c-h>" 
 " inoremap <expr><bs> neocomplcache#smart_close_popup()."\<c-h>" 
@@ -462,6 +509,30 @@ endfunction
 
 
 
+
+""""fengzhenlin 添加
+map <F5> :call CompileRun()<CR>
+map <F6> :call Run()<CR>
+map <F7> :call ClientRun()<CR>
+"定义CompileRun函数，用来调用进行编译和运行 
+func CompileRun() 
+exec "w" 
+"erlang程序 
+if &filetype == 'erlang' 
+exec "!erl -make" 
+endif 
+endfunc 
+"结束定义CompileRun
+
+func Run()
+exec "!erl -s chat_supervisor start"
+endfunc
+"结束定义Run
+
+func ClientRun()
+exec "!erl"
+endfunc
+"结束定义ClientRun
 
 
 "文件模板"
